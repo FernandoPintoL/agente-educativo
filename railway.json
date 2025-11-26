@@ -1,0 +1,37 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "dockerfile",
+    "context": ".",
+    "dockerfile": "Dockerfile"
+  },
+  "deploy": {
+    "numReplicas": 1,
+    "startCommand": "uvicorn agent_service:app --host 0.0.0.0 --port $PORT --access-log",
+    "restartPolicyType": "always",
+    "restartPolicyMaxRetries": 3
+  },
+  "variables": {
+    "ENVIRONMENT": "production",
+    "DEBUG": "false",
+    "LOG_LEVEL": "INFO",
+    "SERVICE_TYPE": "agent",
+    "CORS_ORIGINS": "http://localhost:3000,http://localhost:5173,https://yourdomain.com"
+  },
+  "plugins": [
+    {
+      "source": "https://github.com/railwayapp/railway-plugin-postgresql.git",
+      "config": {
+        "name": "PostgreSQL",
+        "description": "PostgreSQL database for agent service"
+      }
+    },
+    {
+      "source": "https://github.com/railwayapp/railway-plugin-redis.git",
+      "config": {
+        "name": "Redis",
+        "description": "Redis cache for agent service"
+      }
+    }
+  ]
+}
