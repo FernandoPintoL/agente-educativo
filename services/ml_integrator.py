@@ -245,58 +245,19 @@ class MLIntegrator:
         """
         Obtener clustering de no_supervisado
 
-        Endpoints llamados:
-        - POST /cluster/assign -> Asignar estudiante a cluster
-        - GET /cluster/analysis -> Análisis general de clusters
+        NOTA: Actualmente desactivado porque el servidor unsupervised no tiene
+        endpoint per-student. Los endpoints disponibles requieren arrays de datos.
+
+        Esto se optimizará en versión futura con endpoint /student/{id}/cluster
 
         Args:
             student_id: ID del estudiante
 
         Returns:
-            Dict con clustering o None si falla
+            None (fallback silencioso para evitar timeouts)
         """
-        try:
-            # Health check
-            health_url = f"{self.no_supervisada_url}/health"
-            logger.info(f"[No Supervisada] Health check: {health_url}")
-
-            response = requests.get(health_url, timeout=self.timeout)
-            if response.status_code != 200:
-                logger.warning(f"[No Supervisada] Health check falló - Status: {response.status_code}")
-                return None
-
-            logger.info(f"[No Supervisada] Servidor disponible")
-
-            discoveries = {}
-
-            # 1. Cluster Assignment
-            try:
-                assign_url = f"{self.no_supervisada_url}/cluster/assign"
-                payload = {"student_id": student_id}
-                logger.info(f"[No Supervisada] POST {assign_url}")
-                assign_response = requests.post(assign_url, json=payload, timeout=self.timeout)
-                if assign_response.status_code == 200:
-                    discoveries['cluster_assignment'] = assign_response.json()
-                    logger.info(f"[No Supervisada] Cluster assignment obtenido")
-            except Exception as e:
-                logger.warning(f"[No Supervisada] Cluster assignment error: {str(e)}")
-
-            # 2. Cluster Analysis
-            try:
-                analysis_url = f"{self.no_supervisada_url}/cluster/analysis"
-                logger.info(f"[No Supervisada] GET {analysis_url}")
-                analysis_response = requests.get(analysis_url, timeout=self.timeout)
-                if analysis_response.status_code == 200:
-                    discoveries['cluster_analysis'] = analysis_response.json()
-                    logger.info(f"[No Supervisada] Cluster analysis obtenido")
-            except Exception as e:
-                logger.warning(f"[No Supervisada] Cluster analysis error: {str(e)}")
-
-            return discoveries if discoveries else None
-
-        except Exception as e:
-            logger.error(f"[No Supervisada] Error general: {str(e)}")
-            return None
+        logger.info(f"[No Supervisada] Clustering per-student no disponible actualmente")
+        return None
 
     def _combine_analysis(self, predictions: Dict, discoveries: Dict) -> Dict[str, Any]:
         """

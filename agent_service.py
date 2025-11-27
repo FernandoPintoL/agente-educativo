@@ -234,6 +234,83 @@ class HealthResponse(BaseModel):
     timestamp: str
 
 
+class GenerateQuestionsRequest(BaseModel):
+    """Request to generate questions for evaluation"""
+    titulo: str = Field(..., min_length=5, max_length=255)
+    tipo_evaluacion: str
+    curso_id: int
+    cantidad_preguntas: int = Field(default=5, ge=1, le=50)
+    dificultad_deseada: str = Field(default="intermedia")
+    contexto: Optional[str] = None
+
+
+class PreguntaGenerada(BaseModel):
+    """Generated question structure - enriched with pedagogical metadata"""
+    enunciado: str
+    tipo: str
+    opciones: List[str]
+    respuesta_correcta: str
+    puntos: int
+    bloom_level: Optional[str] = None
+    explicacion_detallada: Optional[str] = None
+    dificultad_estimada: Optional[float] = None
+    conceptos_clave: Optional[List[str]] = None
+    notas_profesor: Optional[str] = None
+    distractores_explicacion: Optional[List[str]] = None
+
+
+class GenerateQuestionsResponse(BaseModel):
+    """Response with generated questions"""
+    success: bool
+    preguntas: List[PreguntaGenerada]
+    metadata: Dict[str, Any]
+    timestamp: str
+
+
+class DistractorRequest(BaseModel):
+    """Request to generate intelligent distractors for a question"""
+    enunciado: str = Field(..., min_length=10)
+    respuesta_correcta: str = Field(..., min_length=1)
+    tipo: str = Field(default="opcion_multiple")
+    opciones_actuales: Optional[List[str]] = None
+    nivel_bloom: Optional[str] = None
+    errores_comunes: Optional[List[str]] = None
+
+
+class DistractorResponse(BaseModel):
+    """Response with intelligent distractors"""
+    success: bool
+    distractores: List[Dict[str, str]]  # [{"opcion": "...", "razon": "...", "error_conceptual": "..."}]
+    metadata: Dict[str, Any]
+    timestamp: str
+
+
+# ========================
+# VOCATIONAL SYNTHESIS MODELS
+# ========================
+
+class VocationalSynthesisRequest(BaseModel):
+    """Request para síntesis vocacional personalizada"""
+    student_id: int
+    nombre_estudiante: str
+    promedio_academico: float  # 0-100
+    carrera_predicha: str  # Carrera recomendada por ML
+    confianza: float  # 0-1 (confianza de la predicción)
+    cluster_aptitud: int  # ID del cluster (0, 1, 2)
+    cluster_nombre: str  # Nombre del cluster (Bajo/Medio/Alto desempeño)
+    areas_interes: Dict[str, float]  # {"tecnologia": 95, "ciencias": 80, ...}
+
+
+class VocationalSynthesisResponse(BaseModel):
+    """Response con síntesis vocacional personalizada"""
+    student_id: int
+    narrativa: str  # Narrativa personalizada sobre el perfil vocacional
+    recomendaciones: List[str]  # Recomendaciones actionables
+    pasos_siguientes: List[str]  # Plan de acción a corto/mediano plazo
+    sintesis_tipo: str  # "groq" si usó LLM, "fallback" si usó generación local
+    timestamp: str
+
+
 # ========================
 # LLM Synthesizer
 # ========================
@@ -349,36 +426,39 @@ class LLMSynthesizer:
             return self._local_reasoning(discoveries, predictions)
 
     def _build_synthesis_prompt(self, student_id: int, discoveries: Dict[str, Any], predictions: Dict[str, Any], context: str) -> str:
-        """Build prompt for LLM synthesis"""
+        """Build prompt for LLM synthesis - generates response in Spanish"""
         prompt = f"""
-Analyze this student's learning data and provide synthesis:
+Analiza los datos de aprendizaje de este estudiante y proporciona un análisis detallado EN ESPAÑOL:
 
-Student ID: {student_id}
-Context: {context}
+ID del Estudiante: {student_id}
+Contexto: {context}
 
-UNSUPERVISED ML DISCOVERIES:
+DESCUBRIMIENTOS ML NO SUPERVISADO:
 {json.dumps(discoveries, indent=2)}
 
-SUPERVISED ML PREDICTIONS:
+PREDICCIONES ML SUPERVISADO:
 {json.dumps(predictions, indent=2)}
 
-Provide:
-1. Key insights from the data
-2. Main recommendations for intervention
-3. Student's learning profile summary
+Por favor, proporciona:
+1. Insights principales de los datos (análisis profundo de cada predicción)
+2. Recomendaciones principales para intervención pedagógica
+3. Resumen del perfil de aprendizaje del estudiante
+
+IMPORTANTE: Responde COMPLETAMENTE en ESPAÑOL. Estructura tu respuesta de forma clara y profesional.
 """
         return prompt
 
     def _build_reasoning_prompt(self, student_id: int, discoveries: Dict[str, Any], predictions: Dict[str, Any]) -> str:
-        """Build prompt for detailed reasoning"""
+        """Build prompt for detailed reasoning - generates response in Spanish"""
         return f"""
-Provide step-by-step reasoning for these discoveries:
+Proporciona un razonamiento paso a paso para estos descubrimientos EN ESPAÑOL:
 
-Student ID: {student_id}
-Discoveries: {json.dumps(discoveries, indent=2)}
-Predictions: {json.dumps(predictions, indent=2)}
+ID del Estudiante: {student_id}
+Descubrimientos: {json.dumps(discoveries, indent=2)}
+Predicciones: {json.dumps(predictions, indent=2)}
 
-Explain how these lead to recommendations.
+Explica cómo estos datos conducen a recomendaciones educativas específicas y medidas de intervención.
+Responde COMPLETAMENTE en ESPAÑOL.
 """
 
     def _extract_insights(self, text: str) -> List[str]:
@@ -406,19 +486,19 @@ Explain how these lead to recommendations.
         return steps[:10]
 
     def _local_synthesis(self, student_id: int, discoveries: Dict[str, Any], predictions: Dict[str, Any]) -> Dict[str, Any]:
-        """Local synthesis fallback"""
-        insights = ["Student analysis complete", "Multiple patterns identified"]
-        recommendations = ["Monitor progress", "Provide targeted support"]
+        """Local synthesis fallback - Spanish version"""
+        insights = ["Análisis del estudiante completado", "Se identificaron múltiples patrones de aprendizaje"]
+        recommendations = ["Monitorear el progreso académico", "Proporcionar apoyo académico dirigido"]
 
         if 'cluster_analysis' in discoveries:
-            insights.append("Student assigned to learning segment")
-            recommendations.append("Apply segment-specific strategies")
+            insights.append("Estudiante asignado a un segmento de aprendizaje específico")
+            recommendations.append("Aplicar estrategias específicas para este segmento")
 
         if 'anomalies' in discoveries:
             anomalies = discoveries['anomalies'].get('data', {}).get('detected_patterns', [])
             if anomalies:
-                insights.append(f"{len(anomalies)} unusual patterns detected")
-                recommendations.append("Provide focused intervention")
+                insights.append(f"Se detectaron {len(anomalies)} patrones inusuales en el comportamiento académico")
+                recommendations.append("Proporcionar intervención educativa enfocada")
 
         return {
             'success': True,
@@ -435,12 +515,12 @@ Explain how these lead to recommendations.
         }
 
     def _local_reasoning(self, discoveries: Dict[str, Any], predictions: Dict[str, Any]) -> Dict[str, Any]:
-        """Local reasoning fallback"""
+        """Local reasoning fallback - Spanish version"""
         return {
             'success': True,
-            'reasoning_steps': ['Analyze cluster assignments', 'Evaluate anomalies', 'Review topic mastery', 'Validate predictions', 'Synthesize findings'],
-            'key_insights': ['Patterns identified', 'Academic profile clear', 'Anomalies noted'],
-            'recommendations': ['Implement interventions', 'Monitor anomalies', 'Reinforce strengths'],
+            'reasoning_steps': ['Analizar asignaciones de segmentos', 'Evaluar anomalías detectadas', 'Revisar dominio de temas', 'Validar predicciones ML', 'Sintetizar hallazgos'],
+            'key_insights': ['Patrones identificados en el aprendizaje', 'Perfil académico definido', 'Anomalías registradas'],
+            'recommendations': ['Implementar intervenciones pedagógicas', 'Monitorear anomalías', 'Reforzar fortalezas académicas'],
             'confidence': 0.7,
             'timestamp': datetime.utcnow().isoformat() + 'Z',
         }
@@ -613,6 +693,191 @@ async def generate_intervention(request: InterventionRequest) -> InterventionRes
     except Exception as e:
         logger.error(f"Error in intervention generation: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/synthesis/vocational", response_model=VocationalSynthesisResponse)
+async def synthesis_vocational(request: VocationalSynthesisRequest) -> VocationalSynthesisResponse:
+    """
+    Síntesis personalizada de perfil vocacional
+
+    Genera una narrativa personalizada basada en:
+    - Predicción de carrera (supervisada)
+    - Clustering de aptitudes (no supervisada)
+    - Áreas de interés del estudiante
+    - Perfil académico
+
+    Retorna:
+    - Narrativa personalizada del perfil vocacional
+    - Recomendaciones de carreras y especialidades
+    - Plan de acción con pasos concretos
+    """
+    try:
+        logger.info(f"Síntesis vocacional solicitada para estudiante {request.student_id}")
+
+        # Construir prompt para Groq
+        prompt = f"""
+Eres un consejero educativo y orientador vocacional experto. Tu tarea es generar una síntesis personalizada del perfil vocacional de un estudiante basada en datos de predicción ML.
+
+=== DATOS DEL ESTUDIANTE ===
+- ID: {request.student_id}
+- Nombre: {request.nombre_estudiante}
+- Promedio Académico: {request.promedio_academico:.1f}/100
+- Carrera Predicha: {request.carrera_predicha}
+- Confianza de Predicción: {request.confianza:.0%}
+- Cluster de Aptitud: {request.cluster_nombre} (ID: {request.cluster_aptitud})
+
+=== ÁREAS DE INTERÉS ===
+{chr(10).join([f"- {area}: {score:.0f}/100" for area, score in sorted(request.areas_interes.items(), key=lambda x: x[1], reverse=True)])}
+
+=== REQUISITOS DE LA SÍNTESIS ===
+
+1. **Narrativa Personalizada** (150-200 palabras):
+   - Analiza el perfil del estudiante de forma holística
+   - Conecta áreas de interés con la carrera predicha
+   - Considerer el cluster de aptitud para contexto
+   - Usa un tono motivador y constructivo
+   - Incluye fortalezas identificadas
+
+2. **Recomendaciones** (5-7 puntos concretos):
+   - Acciones específicas para explorar la carrera
+   - Habilidades a desarrollar
+   - Experiencias prácticas sugeridas
+   - Conexiones profesionales a buscar
+   - Recursos educativos relevantes
+
+3. **Pasos Siguientes** (4-5 etapas con timeline):
+   - Semana 1-2: Acciones inmediatas
+   - Mes 1-2: Exploración más profunda
+   - Mes 2-3: Experiencias prácticas
+   - Mes 3+: Consolidación y decisiones
+
+=== RESTRICCIONES IMPORTANTES ===
+- Responde COMPLETAMENTE en ESPAÑOL
+- Sé motivador pero realista
+- Menciona desafíos potenciales con soluciones
+- Personaliza cada recomendación al perfil específico
+- Nunca desanimes al estudiante
+- Estructura claramente cada sección
+
+=== FORMATO JSON REQUERIDO ===
+
+Retorna SOLO JSON válido, sin explicaciones adicionales:
+
+{{
+    "narrativa": "Tu análisis personalizado aquí...",
+    "recomendaciones": [
+        "Recomendación 1",
+        "Recomendación 2",
+        ...
+    ],
+    "pasos_siguientes": [
+        "Semana 1-2: ...",
+        "Mes 1-2: ...",
+        ...
+    ]
+}}
+
+Genera la síntesis personalizada ahora:
+"""
+
+        # Intentar usar Groq si está disponible
+        if orchestrator.synthesizer.llm_available:
+            try:
+                logger.info("Usando Groq para síntesis vocacional")
+                response = orchestrator.synthesizer.llm.invoke(prompt)
+                response_text = response.content
+
+                # Parsear JSON
+                import json
+                try:
+                    # Limpiar markdown si está presente
+                    if "```json" in response_text:
+                        response_text = response_text.split("```json")[1].split("```")[0]
+                    elif "```" in response_text:
+                        response_text = response_text.split("```")[1].split("```")[0]
+
+                    synthesis_data = json.loads(response_text)
+
+                    return VocationalSynthesisResponse(
+                        student_id=request.student_id,
+                        narrativa=synthesis_data.get("narrativa", ""),
+                        recomendaciones=synthesis_data.get("recomendaciones", []),
+                        pasos_siguientes=synthesis_data.get("pasos_siguientes", []),
+                        sintesis_tipo="groq",
+                        timestamp=datetime.utcnow().isoformat() + 'Z'
+                    )
+
+                except json.JSONDecodeError:
+                    logger.warning("No se pudo parsear respuesta JSON de Groq, usando fallback")
+                    synthesis_data = _generate_fallback_vocational_synthesis(request)
+
+                    return VocationalSynthesisResponse(
+                        student_id=request.student_id,
+                        narrativa=synthesis_data["narrativa"],
+                        recomendaciones=synthesis_data["recomendaciones"],
+                        pasos_siguientes=synthesis_data["pasos_siguientes"],
+                        sintesis_tipo="fallback",
+                        timestamp=datetime.utcnow().isoformat() + 'Z'
+                    )
+
+            except Exception as e:
+                logger.warning(f"Error usando Groq para síntesis: {str(e)}, usando fallback")
+                synthesis_data = _generate_fallback_vocational_synthesis(request)
+
+                return VocationalSynthesisResponse(
+                    student_id=request.student_id,
+                    narrativa=synthesis_data["narrativa"],
+                    recomendaciones=synthesis_data["recomendaciones"],
+                    pasos_siguientes=synthesis_data["pasos_siguientes"],
+                    sintesis_tipo="fallback",
+                    timestamp=datetime.utcnow().isoformat() + 'Z'
+                )
+        else:
+            logger.info("Groq no disponible, usando síntesis local")
+            synthesis_data = _generate_fallback_vocational_synthesis(request)
+
+            return VocationalSynthesisResponse(
+                student_id=request.student_id,
+                narrativa=synthesis_data["narrativa"],
+                recomendaciones=synthesis_data["recomendaciones"],
+                pasos_siguientes=synthesis_data["pasos_siguientes"],
+                sintesis_tipo="fallback",
+                timestamp=datetime.utcnow().isoformat() + 'Z'
+            )
+
+    except Exception as e:
+        logger.error(f"Error en synthesis_vocational: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _generate_fallback_vocational_synthesis(request: VocationalSynthesisRequest) -> Dict[str, Any]:
+    """Generar síntesis vocacional sin LLM"""
+    top_interests = sorted(request.areas_interes.items(), key=lambda x: x[1], reverse=True)[:2]
+    top_areas = ", ".join([area.capitalize() for area, _ in top_interests])
+
+    narrativa = f"""Tu perfil vocacional muestra una sólida afinidad por {top_areas} y el análisis predictivo sugiere que {request.carrera_predicha} sería una excelente opción para ti. Tu promedio académico de {request.promedio_academico:.1f}/100 demuestra tu capacidad de aprendizaje, y tu cluster de {request.cluster_nombre} indica que tienes el potencial necesario para prosperar en esta carrera. La confianza en esta predicción es del {request.confianza:.0%}, lo que refleja la solidez del análisis. Te recomendamos que explores esta carrera de forma sistemática mientras desarrollas las habilidades complementarias que hoy en día son cada vez más valoradas en el mercado laboral."""
+
+    recomendaciones = [
+        f"Investiga programas académicos de {request.carrera_predicha} en universidades de renombre",
+        "Conecta con profesionales en el área mediante redes profesionales y eventos de networking",
+        f"Desarrolla habilidades técnicas complementarias a {top_areas.lower()}",
+        "Busca experiencias prácticas como internados o voluntariado en el área",
+        f"Participa en proyectos o clubes relacionados con tus áreas de interés",
+        "Mantén tu promedio académico alto para futuras oportunidades",
+    ]
+
+    pasos_siguientes = [
+        f"Semana 1-2: Investigar al menos 3 universidades que ofrecen {request.carrera_predicha}",
+        f"Mes 1-2: Conectar con al menos 2 profesionales trabajando en {request.carrera_predicha}",
+        f"Mes 2-3: Completar un curso online introductorio en el área de {top_areas.lower()}",
+        f"Mes 3+: Buscar y aplicar para oportunidades de experiencia práctica o voluntariado",
+    ]
+
+    return {
+        "narrativa": narrativa,
+        "recomendaciones": recomendaciones,
+        "pasos_siguientes": pasos_siguientes,
+    }
 
 
 # ========================
@@ -1491,6 +1756,408 @@ async def notify_student_abuse(student_id: int, action_request: Dict[str, Any]):
                 pass
 
 
+@app.post("/api/generation/questions", response_model=GenerateQuestionsResponse)
+async def generate_questions(request: GenerateQuestionsRequest) -> GenerateQuestionsResponse:
+    """
+    Generate multiple questions using Groq LLM
+
+    Generates educational questions based on evaluation title, type, and context.
+    Uses Groq LLM to create varied, pedagogically sound questions.
+
+    Args:
+        request: GenerateQuestionsRequest with evaluation details
+
+    Returns:
+        GenerateQuestionsResponse with generated questions
+    """
+    if not enhancement_agent:
+        raise HTTPException(
+            status_code=503,
+            detail="Task Enhancement Agent no está disponible"
+        )
+
+    try:
+        logger.info(f"Generando {request.cantidad_preguntas} preguntas para: {request.titulo[:50]}...")
+
+        # Use LLM to generate questions
+        if not orchestrator.synthesizer.llm_available:
+            logger.warning("LLM no disponible, generando preguntas locales")
+            preguntas = _generate_local_questions(request)
+        else:
+            preguntas = await _generate_questions_with_llm(request)
+
+        logger.info(f"✅ Generación completada - {len(preguntas)} preguntas generadas")
+
+        return GenerateQuestionsResponse(
+            success=True,
+            preguntas=preguntas,
+            metadata={
+                'cantidad': len(preguntas),
+                'dificultad': request.dificultad_deseada,
+                'tipo': request.tipo_evaluacion,
+                'fuente': 'llm' if orchestrator.synthesizer.llm_available else 'local',
+                'confidence': 0.8 if orchestrator.synthesizer.llm_available else 0.5,
+            },
+            timestamp=datetime.utcnow().isoformat() + 'Z'
+        )
+
+    except Exception as e:
+        logger.error(f"❌ Error generando preguntas: {str(e)}")
+        # Fallback to local generation
+        try:
+            preguntas = _generate_local_questions(request)
+            return GenerateQuestionsResponse(
+                success=True,
+                preguntas=preguntas,
+                metadata={
+                    'cantidad': len(preguntas),
+                    'error': str(e),
+                    'fuente': 'local_fallback',
+                    'confidence': 0.5,
+                },
+                timestamp=datetime.utcnow().isoformat() + 'Z'
+            )
+        except Exception as fallback_error:
+            logger.error(f"❌ Fallback error: {str(fallback_error)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error generando preguntas: {str(e)}"
+            )
+
+
+def _generate_local_questions(request: GenerateQuestionsRequest) -> List[PreguntaGenerada]:
+    """Generate basic questions locally without LLM"""
+    preguntas = []
+
+    # Crear templates básicos que el usuario puede editar
+    tipos = ['opcion_multiple', 'verdadero_falso', 'respuesta_corta']
+
+    for i in range(request.cantidad_preguntas):
+        tipo = tipos[i % len(tipos)]
+
+        if tipo == 'opcion_multiple':
+            opciones = [f'Opción A', 'Opción B', 'Opción C', 'Opción D']
+            respuesta = 'Opción A'
+        elif tipo == 'verdadero_falso':
+            opciones = ['Verdadero', 'Falso']
+            respuesta = 'Verdadero'
+        else:
+            opciones = []
+            respuesta = '[Respuesta esperada]'
+
+        preguntas.append(PreguntaGenerada(
+            enunciado=f"Pregunta {i+1}: [Edita este enunciado - Tema: {request.titulo}]",
+            tipo=tipo,
+            opciones=opciones,
+            respuesta_correcta=respuesta,
+            puntos=10,
+            bloom_level='remember'
+        ))
+
+    return preguntas
+
+
+async def _generate_questions_with_llm(request: GenerateQuestionsRequest) -> List[PreguntaGenerada]:
+    """Generate questions using Groq LLM with enriched pedagogical context"""
+    try:
+        # Prepare enriched prompt for LLM
+        # Map dificultad_deseada to numerical range for Bloom distribution
+        dificultad_map = {
+            'facil': {'min': 0.2, 'max': 0.4},
+            'intermedia': {'min': 0.4, 'max': 0.6},
+            'dificil': {'min': 0.6, 'max': 0.8},
+            'muy_dificil': {'min': 0.8, 'max': 1.0},
+        }
+
+        dif_range = dificultad_map.get(request.dificultad_deseada, dificultad_map['intermedia'])
+
+        # Define Bloom distribution based on difficulty
+        if request.dificultad_deseada == 'facil':
+            bloom_dist = "40% remember, 40% understand, 20% apply"
+        elif request.dificultad_deseada == 'dificil':
+            bloom_dist = "10% remember, 20% understand, 30% apply, 25% analyze, 15% evaluate/create"
+        elif request.dificultad_deseada == 'muy_dificil':
+            bloom_dist = "5% remember, 10% understand, 20% apply, 35% analyze, 30% evaluate/create"
+        else:  # intermedia
+            bloom_dist = "20% remember, 30% understand, 25% apply, 15% analyze, 10% evaluate/create"
+
+        prompt = f"""
+Eres un experto en pedagogía y diseño educativo. Tu tarea es generar exactamente {request.cantidad_preguntas} preguntas de evaluación de alta calidad en formato JSON.
+
+=== CONTEXTO PEDAGÓGICO ===
+- Título de evaluación: {request.titulo}
+- Tipo: {request.tipo_evaluacion}
+- Nivel de dificultad deseado: {request.dificultad_deseada.upper()} (escala 0.0-1.0: {dif_range['min']}-{dif_range['max']})
+- Contexto específico: {request.contexto or 'General'}
+- Distribución de niveles Bloom objetivo: {bloom_dist}
+
+=== REQUISITOS DE CALIDAD ===
+
+1. **Variedad de tipos**:
+   - Opción múltiple (60%): 4 opciones, una correcta
+   - Verdadero/Falso (20%): solo 2 opciones
+   - Respuesta corta (20%): respuesta concisa, clara
+
+2. **Cada pregunta DEBE incluir**:
+   - enunciado: claro, conciso, sin ambigüedad (50-200 caracteres)
+   - tipo: opcion_multiple, verdadero_falso, respuesta_corta
+   - opciones: array con las opciones (varía según tipo)
+   - respuesta_correcta: texto exacto de la respuesta correcta
+   - explicacion_detallada: por qué es correcta (50-150 caracteres)
+   - nivel_bloom: remember|understand|apply|analyze|evaluate|create
+   - dificultad_estimada: número 0.0-1.0 (0=muy fácil, 1=muy difícil)
+   - conceptos_clave: array de 2-3 conceptos evaluados
+   - notas_profesor: sugerencia pedagógica breve para el profesor
+   - distractores_explicacion: array explicando por qué cada opción incorrecta es un error común
+
+3. **Distractores inteligentes**:
+   - Deben representar errores conceptuales comunes
+   - No deben ser obviamente incorrectos
+   - Para múltiple, incluir una opción "parcialmente correcta"
+
+4. **Distribución de dificultad**:
+   - Respetar el rango especificado ({dif_range['min']}-{dif_range['max']})
+   - Variar dentro del rango para mantener engagement
+
+5. **Estándares pedagógicos**:
+   - Alineado con nivel de estudiante del curso
+   - Cada pregunta evalúa UN concepto principal
+   - Enunciados sin jerga innecesaria
+   - Opciones de similar longitud (evitar pistas)
+
+=== FORMATO JSON REQUERIDO ===
+
+RETORNA SOLO UN JSON VÁLIDO, sin explicaciones adicionales:
+
+{{
+    "preguntas": [
+        {{
+            "enunciado": "¿Cuál es la capital de Francia?",
+            "tipo": "opcion_multiple",
+            "opciones": ["París", "Londres", "Berlín", "Madrid"],
+            "respuesta_correcta": "París",
+            "explicacion_detallada": "París es la capital de Francia desde el siglo XII",
+            "nivel_bloom": "remember",
+            "dificultad_estimada": 0.1,
+            "conceptos_clave": ["geografía", "capitales", "Francia"],
+            "notas_profesor": "Pregunta básica para evaluar conocimiento factual",
+            "distractores_explicacion": [
+                "Londres: error común de confundir capitales europeas",
+                "Berlín: otro error de confundir capitales",
+                "Madrid: otro error de confundir capitales"
+            ],
+            "puntos": 10
+        }}
+    ]
+}}
+
+=== INSTRUCCIONES FINALES ===
+- Genera EXACTAMENTE {request.cantidad_preguntas} preguntas
+- Respeta la distribución Bloom: {bloom_dist}
+- Mantén dificultades en rango: {dif_range['min']}-{dif_range['max']}
+- JSON válido, parseable, sin markdown
+- Valida que cada pregunta tenga TODOS los campos requeridos
+"""
+
+        # Call Groq LLM
+        llm_response = orchestrator.synthesizer.generate(prompt)
+
+        # Parse JSON response with better error handling
+        import json
+        try:
+            # Remove potential markdown code blocks
+            if "```json" in llm_response:
+                llm_response = llm_response.split("```json")[1].split("```")[0]
+            elif "```" in llm_response:
+                llm_response = llm_response.split("```")[1].split("```")[0]
+
+            data = json.loads(llm_response)
+            preguntas_data = data.get('preguntas', [])
+        except json.JSONDecodeError as e:
+            logger.warning(f"No se pudo parsear respuesta JSON: {str(e)}, usando fallback")
+            return _generate_local_questions(request)
+
+        # Convert to PreguntaGenerada objects
+        preguntas = []
+        for q in preguntas_data[:request.cantidad_preguntas]:
+            try:
+                # Validate required fields
+                if not q.get('enunciado') or not q.get('respuesta_correcta'):
+                    logger.warning(f"Pregunta incompleta, saltando: {q}")
+                    continue
+
+                preguntas.append(PreguntaGenerada(
+                    enunciado=q.get('enunciado', ''),
+                    tipo=q.get('tipo', 'opcion_multiple'),
+                    opciones=q.get('opciones', []),
+                    respuesta_correcta=q.get('respuesta_correcta', ''),
+                    puntos=int(q.get('puntos', 10)),
+                    bloom_level=q.get('nivel_bloom', 'remember'),
+                    explicacion_detallada=q.get('explicacion_detallada'),
+                    dificultad_estimada=float(q.get('dificultad_estimada', 0.5)) if q.get('dificultad_estimada') else None,
+                    conceptos_clave=q.get('conceptos_clave', []),
+                    notas_profesor=q.get('notas_profesor'),
+                    distractores_explicacion=q.get('distractores_explicacion', [])
+                ))
+            except Exception as e:
+                logger.warning(f"Error procesando pregunta: {str(e)}, saltando")
+                continue
+
+        return preguntas if preguntas else _generate_local_questions(request)
+
+    except Exception as e:
+        logger.error(f"Error en LLM generation: {str(e)}")
+        return _generate_local_questions(request)
+
+
+@app.post("/api/generation/distractors", response_model=DistractorResponse)
+async def generate_distractors(request: DistractorRequest) -> DistractorResponse:
+    """
+    Generate intelligent distractors for a question
+
+    Creates pedagogically sound distractors that represent common student errors
+    and misconceptions based on the question context.
+
+    Args:
+        request: DistractorRequest with question details
+
+    Returns:
+        DistractorResponse with generated distractors
+    """
+    try:
+        logger.info(f"Generando distractores para pregunta: {request.enunciado[:50]}...")
+
+        if not orchestrator.synthesizer.llm_available:
+            logger.warning("LLM no disponible, usando distractores básicos")
+            distractores = _generate_local_distractors(request)
+        else:
+            distractores = await _generate_distractors_with_llm(request)
+
+        logger.info(f"✅ Generación de distractores completada - {len(distractores)} distractores generados")
+
+        return DistractorResponse(
+            success=True,
+            distractores=distractores,
+            metadata={
+                'cantidad': len(distractores),
+                'tipo_pregunta': request.tipo,
+                'fuente': 'llm' if orchestrator.synthesizer.llm_available else 'local',
+                'confidence': 0.8 if orchestrator.synthesizer.llm_available else 0.5,
+            },
+            timestamp=datetime.utcnow().isoformat() + 'Z'
+        )
+
+    except Exception as e:
+        logger.error(f"❌ Error generando distractores: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error generando distractores: {str(e)}"
+        )
+
+
+async def _generate_distractors_with_llm(request: DistractorRequest) -> List[Dict[str, str]]:
+    """Generate intelligent distractors using Groq LLM"""
+    try:
+        prompt = f"""
+Eres un experto en educación. Tu tarea es generar distractores inteligentes para una pregunta de evaluación.
+
+=== CONTEXTO ===
+- Enunciado: {request.enunciado}
+- Respuesta correcta: {request.respuesta_correcta}
+- Tipo de pregunta: {request.tipo}
+- Nivel Bloom: {request.nivel_bloom or 'No especificado'}
+- Errores comunes conocidos: {', '.join(request.errores_comunes) if request.errores_comunes else 'Ninguno'}
+
+=== REQUISITOS ===
+1. Genera 3-4 distractores (opciones incorrectas)
+2. Cada distractor DEBE:
+   - Representar un error conceptual común o malinterpretación frecuente
+   - Ser plausible (no obvio que sea incorrecto)
+   - Tener similar extensión que la respuesta correcta
+   - No ser exactamente lo opuesto de la respuesta correcta
+
+3. Para cada distractor, proporciona:
+   - opcion: el texto del distractor
+   - razon: por qué es incorrecto
+   - error_conceptual: qué concepto erróneo representa
+
+=== FORMATO JSON REQUERIDO ===
+
+Retorna SOLO JSON válido, sin explicaciones:
+
+{{
+    "distractores": [
+        {{
+            "opcion": "Texto del distractor incorrecto",
+            "razon": "Explicación técnica de por qué es incorrecto",
+            "error_conceptual": "Describe el error conceptual que representa"
+        }}
+    ]
+}}
+
+Genera EXACTAMENTE entre 3 y 4 distractores.
+"""
+
+        # Call Groq LLM
+        llm_response = orchestrator.synthesizer.generate(prompt)
+
+        # Parse JSON response
+        import json
+        try:
+            # Remove potential markdown code blocks
+            if "```json" in llm_response:
+                llm_response = llm_response.split("```json")[1].split("```")[0]
+            elif "```" in llm_response:
+                llm_response = llm_response.split("```")[1].split("```")[0]
+
+            data = json.loads(llm_response)
+            distractores_data = data.get('distractores', [])
+        except json.JSONDecodeError:
+            logger.warning("No se pudo parsear respuesta JSON, usando fallback")
+            return _generate_local_distractors(request)
+
+        return distractores_data[:4]  # Máximo 4 distractores
+
+    except Exception as e:
+        logger.error(f"Error en distractor LLM generation: {str(e)}")
+        return _generate_local_distractors(request)
+
+
+def _generate_local_distractors(request: DistractorRequest) -> List[Dict[str, str]]:
+    """Generate basic distractors locally without LLM"""
+    distractores = []
+
+    # Usar errores comunes conocidos si existen
+    if request.errores_comunes:
+        for error in request.errores_comunes[:3]:
+            distractores.append({
+                'opcion': error,
+                'razon': 'Esta es una interpretación incorrecta del concepto',
+                'error_conceptual': 'Confusión conceptual común en este tema'
+            })
+    else:
+        # Generar distractores básicos
+        distractores = [
+            {
+                'opcion': f"Una variación de: {request.respuesta_correcta}",
+                'razon': 'Esta es una variación incorrecta de la respuesta correcta',
+                'error_conceptual': 'Interpretación parcial del concepto'
+            },
+            {
+                'opcion': f"Lo opuesto a: {request.respuesta_correcta}",
+                'razon': 'Esta es la opción opuesta',
+                'error_conceptual': 'Confusión de polaridad o inversión del concepto'
+            },
+            {
+                'opcion': 'Una respuesta plausible pero incorrecta',
+                'razon': 'Aunque suena correcta, no responde adecuadamente a la pregunta',
+                'error_conceptual': 'Malinterpretación del enunciado de la pregunta'
+            }
+        ]
+
+    return distractores
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check() -> HealthResponse:
     """
@@ -1521,10 +2188,13 @@ async def service_info() -> Dict[str, Any]:
             'synthesize': 'POST /synthesize',
             'reasoning': 'POST /reasoning',
             'intervention_strategy': 'POST /intervention-strategy',
+            'synthesis_vocational': 'POST /synthesis/vocational',
             # Analysis endpoints (Punto 3)
             'content_analysis': 'POST /api/analysis/content-check',
             'difficulty_recommendation': 'POST /api/recommendation/difficulty',
             'student_solution_analysis': 'POST /api/analysis/student-solution',
+            # Generation endpoints (Punto 6)
+            'generate_questions': 'POST /api/generation/questions',
             # Audit endpoints (Punto 5)
             'student_history': 'GET /api/audit/student/{student_id}/history',
             'task_usage': 'GET /api/audit/task/{task_id}/usage',
