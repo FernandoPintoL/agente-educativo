@@ -3,6 +3,7 @@
 
 import os
 from dotenv import load_dotenv
+from urllib.parse import urlparse
 
 load_dotenv()
 
@@ -184,13 +185,15 @@ DEEP_LEARNING_FEATURES = [
 
 # Supervisada API (Predicciones)
 SUPERVISADA_API_URL = os.getenv("ML_SUPERVISED_URL", "http://localhost:8001")
-SUPERVISADA_API_HOST = SUPERVISADA_API_URL.split("://")[1].split(":")[0] if "://" in SUPERVISADA_API_URL else "localhost"
-SUPERVISADA_API_PORT = int(SUPERVISADA_API_URL.split(":")[-1]) if ":" in SUPERVISADA_API_URL else 8001
+_parsed_supervisada = urlparse(SUPERVISADA_API_URL)
+SUPERVISADA_API_HOST = _parsed_supervisada.hostname or "localhost"
+SUPERVISADA_API_PORT = _parsed_supervisada.port or 8001
 
 # No Supervisada API (Clustering)
 NO_SUPERVISADA_API_URL = os.getenv("ML_UNSUPERVISED_URL", "http://localhost:8002")
-NO_SUPERVISADA_API_HOST = NO_SUPERVISADA_API_URL.split("://")[1].split(":")[0] if "://" in NO_SUPERVISADA_API_URL else "localhost"
-NO_SUPERVISADA_API_PORT = int(NO_SUPERVISADA_API_URL.split(":")[-1]) if ":" in NO_SUPERVISADA_API_URL else 8002
+_parsed_no_supervisada = urlparse(NO_SUPERVISADA_API_URL)
+NO_SUPERVISADA_API_HOST = _parsed_no_supervisada.hostname or "localhost"
+NO_SUPERVISADA_API_PORT = _parsed_no_supervisada.port or 8002
 
 # ML API Timeouts
 ML_API_TIMEOUT = int(os.getenv("ML_API_TIMEOUT", 10))  # segundos
