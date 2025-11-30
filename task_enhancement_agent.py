@@ -25,6 +25,16 @@ from dotenv import load_dotenv
 # Cargar variables de entorno
 load_dotenv()
 
+# Importar configuración
+try:
+    from config import IS_PRODUCTION
+except ImportError:
+    try:
+        from .config import IS_PRODUCTION
+    except ImportError:
+        # Fallback: detectar basado en ENVIRONMENT
+        IS_PRODUCTION = os.getenv('ENVIRONMENT', 'development').lower() in ('production', 'railway')
+
 # Configurar logging
 logger = logging.getLogger(__name__)
 
@@ -197,7 +207,10 @@ class TaskEnhancementAgent:
         """Inicializar agente con LLM Groq"""
         api_key = os.getenv('GROQ_API_KEY')
         if not api_key:
-            logger.error("GROQ_API_KEY no está configurada")
+            if IS_PRODUCTION:
+                logger.error("GROQ_API_KEY no está configurada - REQUERIDA en PRODUCTION")
+            else:
+                logger.info("GROQ_API_KEY no configurada en LOCAL - usando fallback")
             raise ValueError("GROQ_API_KEY no está configurada en .env")
 
         self.llm = ChatGroq(
@@ -874,5 +887,8 @@ No incluyas texto adicional, solo el JSON.
 try:
     agent = TaskEnhancementAgent()
 except Exception as e:
-    logger.error(f"Error inicializando TaskEnhancementAgent: {str(e)}")
+    if IS_PRODUCTION:
+        logger.error(f"Error inicializando TaskEnhancementAgent: {str(e)}")
+    else:
+        logger.warning(f"TaskEnhancementAgent fallback en LOCAL: {str(e)}")
     agent = None

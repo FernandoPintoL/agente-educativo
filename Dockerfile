@@ -49,14 +49,14 @@ RUN chmod -R 755 /app && \
     chmod -R g+rx /app && \
     chmod -R o+rx /app
 
-# Configuración de puerto (local=8003, producción=8080)
-# Por defecto 8080 para producción, pero respeta variable PORT de docker-compose
-ARG PORT=8080
-ENV PORT=${PORT}
+# Configuración de puerto
+# Local (desarrollo): 8003
+# Producción (Railway): 8080 (automático)
+ENV PORT=8080
 
-# Health check
+# Health check (respeta variable PORT)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD curl -f http://localhost:${PORT:-8080}/health || exit 1
 
 USER mluser
 
@@ -66,4 +66,4 @@ EXPOSE 8003 8080
 # Entry point: uvicorn respeta la variable PORT de entorno
 # Local (docker-compose): PORT=8003
 # Producción (Railway): PORT=8080 (por defecto o variable de Railway)
-CMD sh -c 'uvicorn agent_service:app --host 0.0.0.0 --port ${PORT:-8080} --access-log'
+CMD sh -c 'uvicorn api_server:app --host 0.0.0.0 --port ${PORT:-8080} --access-log'

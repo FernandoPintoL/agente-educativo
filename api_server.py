@@ -1,15 +1,19 @@
 """
-Agent Service - LLM-Based Synthesis and Reasoning
-Port: 8080
+FastAPI Agent Server - LLM-Based Synthesis and Reasoning (v2.0)
+Puerto LOCAL: 8003 | Puerto RAILWAY: 8080
 
-Synthesizes discoveries from unsupervised and supervised ML pipelines
-using LLM (Groq) to generate intelligent insights and personalized
-intervention strategies.
+Sintetiza descubrimientos de pipelines ML (supervisado y no supervisado)
+usando LLM (Groq) para generar insights inteligentes y estrategias
+de intervención educativa personalizadas.
 
-Architecture:
-- LLMSynthesizer: Groq integration with graceful fallback
-- AgentOrchestrator: Orchestrates synthesis, reasoning, and strategies
-- FastAPI endpoints for ML pipeline integration
+Arquitectura:
+- LLMSynthesizer: Integración Groq con fallback elegante
+- AgentOrchestrator: Orquesta síntesis, razonamiento y estrategias
+- Endpoints FastAPI para integración con pipelines ML
+
+Uso:
+    python api_server.py          (Local: puerto 8003)
+    uvicorn api_server:app --port 8080  (Railway: puerto 8080)
 """
 
 from fastapi import FastAPI, HTTPException, Request
@@ -119,6 +123,20 @@ except ImportError:
 # Load environment variables
 load_dotenv()
 
+# Import configuration
+try:
+    from config import PORT, HOST, ENVIRONMENT, LOG_LEVEL, DEBUG
+except ImportError:
+    try:
+        from .config import PORT, HOST, ENVIRONMENT, LOG_LEVEL, DEBUG
+    except ImportError:
+        # Fallback: use environment variables directly
+        PORT = int(os.getenv('PORT', 8003))
+        HOST = os.getenv('HOST', '0.0.0.0')
+        ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
+        LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+        DEBUG = os.getenv('DEBUG', 'true').lower() == 'true'
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -150,7 +168,10 @@ try:
     enhancement_agent = TaskEnhancementAgent()
     logger.info("✅ Task Enhancement Agent inicializado")
 except Exception as e:
-    logger.error(f"❌ Error inicializando Enhancement Agent: {str(e)}")
+    if ENVIRONMENT == 'production':
+        logger.error(f"❌ Error inicializando Enhancement Agent: {str(e)}")
+    else:
+        logger.warning(f"⚠️  Enhancement Agent fallback en LOCAL: {str(e)}")
     enhancement_agent = None
 
 # ========================
@@ -331,7 +352,10 @@ class LLMSynthesizer:
         """Initialize LLM with Groq API"""
         try:
             if not self.groq_api_key:
-                logger.warning("GROQ_API_KEY not set in environment")
+                if ENVIRONMENT == 'production':
+                    logger.error("GROQ_API_KEY requerida en PRODUCTION")
+                else:
+                    logger.info("GROQ_API_KEY no configurada en LOCAL - using local synthesis fallback")
                 return
 
             from langchain_groq import ChatGroq
@@ -2252,11 +2276,18 @@ async def shutdown_event():
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv('PORT', 8080))
-    log_level = os.getenv('LOG_LEVEL', 'info').lower()
+
+    logger.info("\n" + "=" * 70)
+    logger.info("Iniciando servidor Agent (LLM Synthesis) con:")
+    logger.info(f"  Host: {HOST}")
+    logger.info(f"  Puerto: {PORT}")
+    logger.info(f"  Ambiente: {ENVIRONMENT}")
+    logger.info("=" * 70 + "\n")
+
     uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=port,
-        log_level=log_level
+        "api_server:app",
+        host=HOST,
+        port=PORT,
+        reload=DEBUG,
+        log_level=LOG_LEVEL.lower()
     )

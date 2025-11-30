@@ -1,15 +1,16 @@
-# 🤖 Agente Inteligente de Síntesis LLM
+# 🤖 Agente Inteligente de Síntesis LLM - v2.0
 
 **Servicio de síntesis de descubrimientos ML usando LLM (Groq) para generar insights educativos inteligentes**
 
 | Aspecto | Detalle |
 |--------|---------|
+| **Status** | ✅ IMPLEMENTADO Y FUNCIONAL (v2.0) |
 | **Tecnología** | FastAPI + LangChain + Groq LLM |
-| **Lenguaje** | Python 3.12+ |
-| **Puerto Local** | 8003 |
-| **Puerto Railway** | 8080 (dinámico `$PORT`) |
-| **Base de Datos** | PostgreSQL (compartida) |
-| **Cache** | Redis (opcional) |
+| **Lenguaje** | Python 3.11+ |
+| **Puerto Local** | **8003** |
+| **Puerto Railway** | **8080** (automático) |
+| **Base de Datos** | PostgreSQL |
+| **Configuración** | Centralizada en `config.py` |
 
 ---
 
@@ -44,90 +45,94 @@ cd D:\PLATAFORMA\ EDUCATIVA\agente
 # 3. Instalar dependencias
 pip install -r requirements.txt
 
-# 4. Configurar variables de entorno
-# Edita .env con tu GROQ_API_KEY
+# 4. Configurar .env (copiar desde .env.example)
+cp .env.example .env
+# Edita .env si es necesario (GROQ_API_KEY es opcional en LOCAL)
 
 # 5. Iniciar servicio
-python agent_service.py
+python api_server.py
 ```
 
 **Resultado esperado:**
 ```
 INFO:     Uvicorn running on http://0.0.0.0:8003
 INFO:     Application startup complete
-LLM Available: True ✅
 ```
 
 Accede a: **http://localhost:8003/docs** para la interfaz interactiva
 
 ---
 
-## ⚙️ Configuración
+## ⚙️ Configuración (v2.0)
 
-### Paso 1: Obtener GROQ_API_KEY
+### Estructura de Configuración
+
+El agente usa un sistema de **configuración centralizada** (`config.py`) que detecta automáticamente:
+- **ENVIRONMENT:** `development` (LOCAL) o `production` (RAILWAY)
+- **PORT:** `8003` (local) o `8080` (Railway automático)
+- **Variables DB_\*:** Nombre estandarizado para base de datos
+- **Groq API:** Opcional en LOCAL, requerida en PRODUCTION
+
+### Paso 1: Configurar `.env` LOCAL
+
+**Archivo:** `agente/.env` (para DESARROLLO)
+
+```ini
+# ============================================================
+# AMBIENTE Y PUERTO (Automáticos en config.py)
+# ============================================================
+ENVIRONMENT=development
+DEBUG=true
+LOG_LEVEL=DEBUG
+
+# ============================================================
+# BASE DE DATOS (LOCAL)
+# ============================================================
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=educativa
+DB_USERNAME=postgres
+DB_PASSWORD=1234
+
+HOST=0.0.0.0
+
+# ============================================================
+# GROQ LLM (Opcional en LOCAL)
+# ============================================================
+# En LOCAL: NO necesitas API key (usa fallback)
+# En RAILWAY: Agrega en Railway Console, NO aquí
+# GROQ_API_KEY=tu_api_key_aqui
+
+GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_TEMPERATURE=0.3
+GROQ_MAX_TOKENS=2048
+
+# ============================================================
+# URLs DE SERVICIOS ML
+# ============================================================
+ML_SUPERVISED_URL=http://127.0.0.1:8001
+ML_UNSUPERVISED_URL=http://127.0.0.1:8002
+ML_API_TIMEOUT=30
+```
+
+### Paso 2: GROQ_API_KEY en RAILWAY
+
+⚠️ **IMPORTANTE - SEGURIDAD:**
+- **NO** coloques API keys en `.env` del repositorio
+- Agrega `GROQ_API_KEY` en **Railway Console** solamente
+
+```bash
+# En Railway Console:
+GROQ_API_KEY=gsk_xxxxxxxxxxxxx
+GROQ_MODEL=llama-3.3-70b-versatile
+# (Otras variables se heredan de .env)
+```
+
+### Paso 3: Obtener GROQ_API_KEY (opcional para LOCAL)
 
 1. Ir a https://console.groq.com/keys
 2. Crear nueva API key
-3. Copiar la key
-
-### Paso 2: Configurar .env
-
-**Archivo:** `agente/.env`
-
-```ini
-# ====================================
-# CONFIGURACIÓN CRÍTICA
-# ====================================
-
-# GROQ API (REQUERIDO)
-GROQ_API_KEY=gsk_xxxxxxxxxxxxx  # Tu API key
-
-# Puerto
-PORT=8003  # Local: 8003, Railway: $PORT (env var)
-
-# Base de Datos
-DATABASE_URL=postgresql://usuario:password@localhost:5432/educativa_db
-
-# ====================================
-# CONFIGURACIÓN RECOMENDADA
-# ====================================
-
-# Modelo LLM
-GROQ_MODEL=mixtral-8x7b-32768  # Rápido (recomendado)
-# Alternativas:
-# GROQ_MODEL=llama-3.3-70b-versatile  # Más potente
-
-# Temperatura (0=determinista, 1=creativo)
-GROQ_TEMPERATURE=0.3  # Para recomendaciones consistentes
-
-# Ambiente
-ENVIRONMENT=development
-DEBUG=true
-LOG_LEVEL=INFO
-
-# ====================================
-# CONFIGURACIÓN OPCIONAL
-# ====================================
-
-# Redis Cache
-REDIS_URL=redis://localhost:6379
-CACHE_ENABLED=true
-CACHE_TTL=1800  # 30 minutos
-
-# Integración con otros servicios ML
-ML_SUPERVISED_URL=http://localhost:8001
-ML_UNSUPERVISED_URL=http://localhost:8002
-
-# API Key de Groq (debug)
-GROQ_MAX_TOKENS=2048
-GROQ_TIMEOUT=30
-```
-
-**Copiar desde ejemplo:**
-```bash
-cp .env.example .env
-# Luego edita .env con tus valores
-```
+3. Agregarla SOLO a Railway Console (no al repositorio)
 
 ---
 
@@ -769,17 +774,46 @@ curl https://status.groq.com
 
 ---
 
-## ✅ Checklist de Inicio
+## 🔄 CAMBIOS RECIENTES (v2.0)
 
-- [ ] Python 3.12+ instalado
+El agente ha sido actualizado para mantener **coherencia total** con `supervisado/` y `no_supervisado/`:
+
+- ✅ **config.py centralizado:** Detección automática de ENVIRONMENT y PORT
+- ✅ **Variables estandarizadas:** Cambio de `DATABASE_*` → `DB_*`
+- ✅ **Seguridad mejorada:** GROQ_API_KEY SOLO en Railway Console
+- ✅ **.env.example limpio:** Template sin secrets
+- ✅ **Puerto automático:** 8003 (LOCAL), 8080 (RAILWAY)
+- ✅ **Dockerfile optimizado:** Health check dinámico
+- ✅ **railway.json limpiado:** Variables innecesarias removidas
+
+**Patrón coherente en todos los servicios:**
+| Servicio | LOCAL | RAILWAY | Config |
+|----------|-------|---------|--------|
+| Supervisado | 8001 | 8080 | config.py ✅ |
+| No Supervisado | 8002 | 8080 | config.py ✅ |
+| **Agente** | **8003** | **8080** | **config.py ✅** |
+
+---
+
+## ✅ Checklist de Inicio (v2.0)
+
+**LOCAL (Desarrollo):**
+- [ ] Python 3.11+ instalado
 - [ ] Entorno virtual creado
 - [ ] Dependencias instaladas (`pip install -r requirements.txt`)
-- [ ] GROQ_API_KEY obtenida desde console.groq.com
-- [ ] `.env` configurado con GROQ_API_KEY
-- [ ] `python agent_service.py` ejecutándose
+- [ ] `.env` configurado (copia desde `.env.example`)
+- [ ] PostgreSQL corriendo en localhost:5432
+- [ ] `python api_server.py` ejecutándose en puerto 8003
 - [ ] Health endpoint: `http://localhost:8003/health` respondiendo
-- [ ] LLM Available: True en startup logs
 - [ ] Swagger UI: `http://localhost:8003/docs` accesible
+
+**RAILWAY (Producción):**
+- [ ] GROQ_API_KEY agregada en Railway Console
+- [ ] DB_HOST, DB_PORT, DB_DATABASE, DB_USERNAME, DB_PASSWORD en Railway Console
+- [ ] ENVIRONMENT=production en Railway Console
+- [ ] Dockerfile construyendo correctamente
+- [ ] railway.json configurado
+- [ ] Servicio corriendo en puerto 8080
 
 ---
 

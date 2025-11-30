@@ -1,48 +1,80 @@
 """
-Configuración del Agente Inteligente de Recomendaciones Educativas
+Configuración Centralizada del Agente LLM - v2.0.0
+Soporta LOCAL (desarrollo) y RAILWAY (producción)
 
-Las variables de configuración se pueden establecer en el archivo .env:
-- GROQ_API_KEY: API key de Groq
-- GROQ_MODEL: Modelo a usar
-- GROQ_TEMPERATURE: Temperatura (0-1)
-- GROQ_MAX_TOKENS: Máximo de tokens
-- GROQ_CACHE_ENABLED: Habilitar caché
-- GROQ_CACHE_TTL: TTL en minutos
+Variables de configuración en .env:
+- ENVIRONMENT: development o production
+- PORT: 8003 (local) o 8080 (Railway automático)
+- DB_*: Credenciales de BD
+- GROQ_*: Configuración Groq API
+- ML_*: URLs de servicios ML
 """
 
 import os
 from dotenv import load_dotenv
 
 # Cargar variables de entorno desde .env
-# Busca .env en este orden:
-# 1. ./agente/.env (específico del agente)
-# 2. ../..env (en directorio ml_educativas)
-# 3. Variables de entorno del sistema
-
 agente_dir = os.path.dirname(__file__)
 agente_env = os.path.join(agente_dir, '.env')
-ml_api_env = os.path.join(agente_dir, '..', '.env')
 
-# Cargar desde ./agente/.env primero (tiene prioridad)
 if os.path.exists(agente_env):
     load_dotenv(agente_env, override=True)
 
-# Luego cargar desde directorio padre (fallback)
-if os.path.exists(ml_api_env):
-    load_dotenv(ml_api_env, override=False)
+# ============================================================
+# AMBIENTE Y PUERTO
+# ============================================================
+
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'development').lower()
+IS_PRODUCTION = ENVIRONMENT in ('production', 'railway')
+IS_DEVELOPMENT = not IS_PRODUCTION
+
+# Puerto automático basado en ambiente
+if IS_PRODUCTION:
+    # Railway asigna el puerto en la variable PORT
+    PORT = int(os.getenv('PORT', 8080))
+else:
+    # Local usa 8003 (supervisado usa 8001, no_supervisado usa 8002)
+    PORT = int(os.getenv('PORT', 8003))
+
+HOST = os.getenv('HOST', '0.0.0.0')
+DEBUG = os.getenv('DEBUG', 'true').lower() == 'true' if IS_DEVELOPMENT else False
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'DEBUG' if IS_DEVELOPMENT else 'INFO').upper()
+
+# ============================================================
+# BASE DE DATOS
+# ============================================================
+
+DB_HOST = os.getenv('DB_HOST', 'localhost')
+DB_PORT = os.getenv('DB_PORT', '5432')
+DB_DATABASE = os.getenv('DB_DATABASE', 'educativa')
+DB_USERNAME = os.getenv('DB_USERNAME', 'postgres')
+DB_PASSWORD = os.getenv('DB_PASSWORD', '1234')
+
+# ============================================================
+# URLs DE SERVICIOS ML (Para integración)
+# ============================================================
+
+ML_SUPERVISED_URL = os.getenv('ML_SUPERVISED_URL', 'http://127.0.0.1:8001')
+ML_UNSUPERVISED_URL = os.getenv('ML_UNSUPERVISED_URL', 'http://127.0.0.1:8002')
+ML_API_TIMEOUT = int(os.getenv('ML_API_TIMEOUT', '30'))
 
 # ============================================================
 # GROQ API CONFIGURATION
 # ============================================================
 
-# API Key de Groq (requerida)
+# API Key de Groq (requerida en PRODUCTION, opcional en LOCAL)
 # Obtén tu key en: https://console.groq.com/keys
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-if not GROQ_API_KEY:
-    print("\n[WARNING] GROQ_API_KEY no está configurada en .env")
-    print("Por favor, añade tu API key de Groq al archivo .env:")
-    print("GROQ_API_KEY=tu_api_key_aqui\n")
+if not GROQ_API_KEY and IS_PRODUCTION:
+    raise ValueError(
+        "\n[ERROR] GROQ_API_KEY es requerida en PRODUCTION\n"
+        "Agrega GROQ_API_KEY a Railway Console\n"
+    )
+elif not GROQ_API_KEY and IS_DEVELOPMENT:
+    print(
+        "[INFO] GROQ_API_KEY no configurada - usando fallback en LOCAL"
+    )
 
 # Modelo de Groq a usar
 # NOTA: mixtral-8x7b-32768 fue descontinuado en Nov 2025
@@ -72,8 +104,8 @@ REQUEST_TIMEOUT = 30  # segundos
 # LOGGING
 # ============================================================
 
-LOG_LEVEL = "INFO"
-LOG_FILE = "agente/logs/agent.log"
+# Ya definido arriba: LOG_LEVEL basado en ENVIRONMENT
+LOG_FILE = os.getenv('LOG_FILE', 'agente/logs/agent.log')
 
 # ============================================================
 # CACHE (para evitar llamadas repetidas a Groq)
