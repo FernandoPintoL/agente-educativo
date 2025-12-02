@@ -25,6 +25,7 @@ import os
 from datetime import datetime
 import json
 from dotenv import load_dotenv
+from urllib.parse import quote
 
 # Importar el nuevo agente de mejora de tareas
 try:
@@ -448,6 +449,33 @@ class LLMSynthesizer:
         except Exception as e:
             logger.warning(f"LLM reasoning failed: {str(e)}")
             return self._local_reasoning(discoveries, predictions)
+
+    def generate(self, prompt: str) -> str:
+        """
+        Generate text response using LLM for a given prompt
+        Returns plain text response from Groq API
+        Falls back to local generation if LLM unavailable
+        """
+        if not self.llm_available:
+            logger.info("LLM unavailable, using local fallback")
+            return self._local_generate(prompt)
+
+        try:
+            response = self.llm.invoke(prompt)
+            generated_text = response.content
+            logger.info("✅ Generated response from LLM")
+            return generated_text
+        except Exception as e:
+            logger.warning(f"LLM generation failed: {str(e)}, falling back to local")
+            return self._local_generate(prompt)
+
+    def _local_generate(self, prompt: str) -> str:
+        """
+        Local fallback for generating text when LLM is unavailable
+        Returns a basic template response
+        """
+        logger.info("Using local generation fallback")
+        return "No se pudo generar contenido - servicio de IA no disponible. Por favor intenta de nuevo más tarde."
 
     def _build_synthesis_prompt(self, student_id: int, discoveries: Dict[str, Any], predictions: Dict[str, Any], context: str) -> str:
         """Build prompt for LLM synthesis - generates response in Spanish"""
@@ -2182,6 +2210,120 @@ def _generate_local_distractors(request: DistractorRequest) -> List[Dict[str, st
     return distractores
 
 
+@app.post("/api/resources")
+async def get_study_resources(request: Request) -> Dict[str, Any]:
+    """
+    Obtener recursos educativos REALES de YouTube y plataformas educativas
+
+    Este endpoint busca y retorna recursos educativos reales (videos, playlists, etc.)
+    basados en:
+    - El tema/materia
+    - El nivel de riesgo (para ajustar dificultad)
+    - El idioma preferido
+
+    Args:
+        subject: Tema/Materia a estudiar
+        risk_level: Nivel de riesgo (LOW, MEDIUM, HIGH) para ajustar dificultad
+        current_grade: Calificación actual (usado para contexto)
+        student_name: Nombre del estudiante (opcional)
+        need: Tipo de necesidad (opcional)
+
+    Returns:
+        Dict con recursos REALES con URLs verificadas
+    """
+    try:
+        # Leer JSON del request
+        body = await request.json()
+
+        subject = body.get('subject', 'General')
+        risk_level = body.get('risk_level', 'MEDIUM')
+        current_grade = float(body.get('current_grade', 0))
+        student_name = body.get('student_name', 'Estudiante')
+        language = body.get('language', 'es')
+
+        logger.info(f"[RESOURCES] 🔍 Buscando recursos REALES para: {subject}")
+        logger.info(f"[RESOURCES] Nivel: {risk_level}, Grado: {current_grade}")
+
+        # Obtener YouTube Finder
+        from youtube_resources import get_youtube_finder
+        finder = get_youtube_finder()
+
+        # Buscar MÚLTIPLES FORMATOS de recursos educativos
+        resources_by_format = finder.search_educational_resources_multiformat(
+            subject=subject,
+            risk_level=risk_level,
+            language=language
+        )
+
+        # Contar total de recursos
+        total_resources = sum(len(v) for v in resources_by_format.values())
+        logger.info(f"[RESOURCES] ✓ {total_resources} recursos en múltiples formatos encontrados")
+
+        # Mapeo de emojis por tipo de recurso
+        emoji_map = {
+            'videos': '📺',
+            'articles': '📄',
+            'exercises': '🎯',
+            'interactive': '📱',
+            'documentation': '📖',
+            'communities': '👥',
+        }
+
+        # Formatear recursos por categoría para el frontend
+        formatted_by_category = {}
+        for category, resources_list in resources_by_format.items():
+            emoji = emoji_map.get(category, '📌')
+            formatted_by_category[category] = []
+
+            for resource in resources_list:
+                description = resource.get('description', '')
+                title = resource.get('title', '')
+                url = resource.get('url', '')
+
+                formatted_item = {
+                    'title': title,
+                    'url': url,
+                    'source': resource.get('source', 'Unknown'),
+                    'description': description,
+                    'type': resource.get('type', 'resource'),
+                    'emoji': emoji,
+                    'display': f"{emoji} {title}\n   {description}\n   {resource.get('source', '')}"
+                }
+                formatted_by_category[category].append(formatted_item)
+
+        return {
+            'success': True,
+            'subject': subject,
+            'student_name': student_name,
+            'resources_by_format': formatted_by_category,  # Agrupado por tipo
+            'raw_resources': resources_by_format,  # Datos crudos para procesamiento
+            'total_count': total_resources,
+            'breakdown': {category: len(resources) for category, resources in resources_by_format.items()},
+            'note': f'{total_resources} recursos en {len(resources_by_format)} categorías diferentes para {subject}',
+            'generated_at': datetime.utcnow().isoformat() + 'Z',
+        }
+
+    except Exception as e:
+        logger.error(f"[RESOURCES] ❌ Error buscando recursos: {str(e)}", exc_info=True)
+
+        # Retornar recursos fallback si hay error
+        subject = body.get('subject', 'General')
+        return {
+            'success': False,
+            'subject': subject,
+            'resources': [
+                f"📺 Buscar en Khan Academy: https://www.khanacademy.org/search?page_search_query={quote(subject)}",
+                f"📺 Buscar en YouTube Educativo: https://www.youtube.com/results?search_query={quote(subject)}+educativo+tutorial",
+                f"📚 MIT OpenCourseWare: https://ocw.mit.edu/search/?q={quote(subject)}",
+                f"🎯 Coursera: https://www.coursera.org/search?query={quote(subject)}",
+            ],
+            'raw_resources': [],
+            'note': 'Recursos fallback - Enlaces de búsqueda para encontrar contenido',
+            'error': str(e),
+            'generated_at': datetime.utcnow().isoformat() + 'Z',
+        }
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check() -> HealthResponse:
     """
@@ -2219,6 +2361,8 @@ async def service_info() -> Dict[str, Any]:
             'student_solution_analysis': 'POST /api/analysis/student-solution',
             # Generation endpoints (Punto 6)
             'generate_questions': 'POST /api/generation/questions',
+            # Resources endpoint (Punto 7 - NEW)
+            'get_resources': 'POST /api/resources',
             # Audit endpoints (Punto 5)
             'student_history': 'GET /api/audit/student/{student_id}/history',
             'task_usage': 'GET /api/audit/task/{task_id}/usage',
